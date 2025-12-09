@@ -1,0 +1,240 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # DATABASE LAYER (Isolated Network)
+  # ==========================================
+  
+  # PostgreSQL - Product Database
+  postgres-products:
+    image: postgres:15-alpine
+    container_name: red-shopping-postgres-products
+    environment:
+      POSTGRES_DB: products_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"  # Exposé pour développement uniquement
+    volumes:
+      - postgres-products-data:/var/lib/postgresql/data
+    networks:
+      - database-network
+
+  # PostgreSQL - Order Database (séparée pour isolation)
+  postgres-orders:
+    image: postgres:15-alpine
+    container_name: red-shopping-postgres-orders
+    environment:
+      POSTGRES_DB: orders_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"  # Port différent pour éviter conflit
+    volumes:
+      - postgres-orders-data:/var/lib/postgresql/data
+    networks:
+      - database-network
+
+  # MongoDB - User Database (NoSQL pour flexibilité)
+  mongodb:
+    image: mongo:7
+    container_name: red-shopping-mongodb
+    environment:
+      MONGO_INITDB_DATABASE: users_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - database-network
+
+  # Redis Cache & Sessions
+  redis:
+    image: redis:7-alpine
+    container_name: red-shopping-redis
+    command: redis-server
+    ports:
+      - "6379:6379"
+    networks:
+      - database-network
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: red-shopping-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # Management UI
+    networks:
+      - database-network
+
+  # ==========================================
+  # BACKEND LAYER (Application Network)
+  # ==========================================
+  
+  # Product Service (Python/Flask)
+  product-service:
+    build:
+      context: ./microservices/product-service
+      dockerfile: Dockerfile
+    container_name: red-shopping-product-service
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-products:5432/products_db
+    ports:
+      - "8001:8001"
+    depends_on:
+      - postgres-products
+    networks:
+      - backend-network
+      - database-network  # Accès à sa BDD uniquement
+    volumes:
+      - ./microservices/product-service:/app
+
+  # User Service (Node.js/Express)
+  user-service:
+    build:
+      context: ./microservices/user-service
+      dockerfile: Dockerfile
+    container_name: red-shopping-user-service
+    environment:
+      - NODE_ENV=development
+      - MONGO_URI=mongodb://mongodb:27017/users_db
+      - REDIS_HOST=redis
+      - JWT_SECRET=your-super-secret-jwt-key
+    ports:
+      - "8002:8002"
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - backend-network
+      - database-network  # Accès à MongoDB et Redis
+    volumes:
+      - ./microservices/user-service:/app
+
+  # Order Service (Python/Flask)
+  order-service:
+    build:
+      context: ./microservices/order-service
+      dockerfile: Dockerfile
+    container_name: red-shopping-order-service
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-orders:5432/orders_db
+      - RABBITMQ_HOST=rabbitmq
+      - PRODUCT_SERVICE_URL=http://product-service:8001
+    ports:
+      - "8003:8003"
+    depends_on:
+      - postgres-orders
+      - rabbitmq
+      - product-service
+    networks:
+      - backend-network
+      - database-network  # Accès à sa BDD et RabbitMQ
+    volumes:
+      - ./microservices/order-service:/app
+
+  # Notification Service (Python/Flask)
+  notification-service:
+    build:
+      context: ./microservices/notification-service
+      dockerfile: Dockerfile
+    container_name: red-shopping-notification-service
+    environment:
+      - FLASK_ENV=development
+      - RABBITMQ_HOST=rabbitmq
+    ports:
+      - "8004:8004"
+    depends_on:
+      - rabbitmq
+    networks:
+      - backend-network
+      - database-network  # Accès à RabbitMQ uniquement
+    volumes:
+      - ./microservices/notification-service:/app
+
+  # API Gateway (Node.js/Express) - Point d'entrée unique
+  api-gateway:
+    build:
+      context: ./microservices/api-gateway
+      dockerfile: Dockerfile
+    container_name: red-shopping-api-gateway
+    environment:
+      - NODE_ENV=development
+      - PRODUCT_SERVICE_URL=http://product-service:8001
+      - USER_SERVICE_URL=http://user-service:8002
+      - ORDER_SERVICE_URL=http://order-service:8003
+      - JWT_SECRET=your-super-secret-jwt-key
+      - REDIS_HOST=redis
+    ports:
+      - "8000:8000"
+    depends_on:
+      - product-service
+      - user-service
+      - order-service
+      - redis
+    networks:
+      - frontend-network  # Accessible par le frontend
+      - backend-network   # Communique avec les microservices
+      - database-network  # Accès à Redis pour sessions
+    volumes:
+      - ./microservices/api-gateway:/app
+
+  # ==========================================
+  # FRONTEND LAYER (Public Network)
+  # ==========================================
+  
+  # Frontend (React)
+  frontend-ui:
+    build:
+      context: ./microservices/frontend-ui
+    container_name: red-shopping-frontend-ui
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    networks:
+      - frontend-network
+    volumes:
+      - ./microservices/frontend-ui:/app
+      - /app/node_modules
+
+# ==========================================
+# NETWORKS - Segmentation de sécurité
+# ==========================================
+networks:
+  # Frontend isolé - Accède uniquement à l'API Gateway
+  frontend-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+  # Backend - Communication inter-microservices
+  backend-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+
+  # Database - Couche de données isolée
+  database-network:
+    driver: bridge
+    internal: true  # Pas d'accès direct depuis l'extérieur
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+
+# ==========================================
+# VOLUMES - Persistance des données
+# ==========================================
+volumes:
+  postgres-products-data:    # Catalogue produits
+  postgres-orders-data:      # Historique commandes
+  mongodb-data:              # Profils utilisateurs
+

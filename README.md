@@ -1,0 +1,79 @@
+# Red Shopping - E-commerce Microservices Platform
+
+![Architecture](https://img.shields.io/badge/Architecture-Microservices-blue)
+![AWS](https://img.shields.io/badge/Cloud-AWS-orange)
+![Kubernetes](https://img.shields.io/badge/Orchestration-Kubernetes-326CE5)
+![CI/CD](https://img.shields.io/badge/CI%2FCD-GitLab-FC6D26)
+
+## 📋 Vue d'ensemble
+
+Red Shopping est une plateforme e-commerce moderne déployée sur AWS avec une architecture microservices complète, démontrant l'excellence DevOps/SRE.
+
+## 🏗️ Architecture
+
+### Microservices (6 services)
+
+1. **Frontend UI** (React) - Interface utilisateur
+2. **API Gateway** (Node.js/Express) - Point d'entrée, authentification JWT
+3. **Product Service** (Python/Flask) - Gestion catalogue produits
+4. **User Service** (Node.js/Express) - Authentification, profils utilisateurs
+5. **Order Service** (Python/Flask) - Gestion commandes et panier
+6. **Notification Service** (Python/Flask) - Notifications asynchrones
+
+### Stack Technologique
+
+**Backend**
+- Python 3.11 (Flask)
+- Node.js 20 (Express)
+
+**Frontend**
+- React 18
+- Tailwind CSS
+
+**Bases de données**
+- PostgreSQL (Produits)
+- MongoDB (Utilisateurs)
+- Redis (Cache/Sessions)
+
+**Message Queue**
+- RabbitMQ
+
+**DevOps**
+- Docker & Docker Compose
+- Kubernetes (EKS)
+- Terraform
+- GitLab CI/CD
+- Prometheus + Grafana
+- ELK Stack
+
+**Cloud**
+- AWS (VPC, EKS, RDS, ElastiCache, ALB, Route 53, ECR)
+
+## 🚀 Quick Start
+
+### Prérequis
+
+- Docker & Docker Compose
+- Node.js 20+
+- Python 3.11+
+- kubectl
+- AWS CLI
+- Terraform
+
+### Environnement Local
+
+```bash
+# Cloner le repository
+git clone <your-repo-url>
+cd Red_Shoping
+
+# Copier les variables d'environnement
+cp .env.example .env
+
+# Lancer tous les services
+docker-compose up -d
+
+# Accéder à l'application
+# Frontend: http://localhost:3000
+# API Gateway: http://localhost:8080
+# Grafana: http://localhost:3001
