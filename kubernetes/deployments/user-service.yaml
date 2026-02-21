@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: red-shopping
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: user-service
+        image: red-shopping-user-service:latest
+        imagePullPolicy: Never  # Pour Minikube (images locales)
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: NODE_ENV
+        - name: MONGO_URI
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: MONGO_URI
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: REDIS_HOST
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: jwt-secret
+        ports:
+        - containerPort: 8002
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: red-shopping
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+  - port: 8002
+    targetPort: 8002

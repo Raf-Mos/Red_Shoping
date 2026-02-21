@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
 import { ShoppingCart, User, LogOut, Store } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useCart } from '../context/CartContext'
 
 const Navbar = () => {
   const { user, logout, isAuthenticated } = useAuth()
+  const { getCartCount } = useCart()
 
   return (
     <nav className="bg-white shadow-md">
@@ -28,15 +30,22 @@ const Navbar = () => {
                 My Orders
               </Link>
             )}
+            {isAuthenticated && user?.role === 'admin' && (
+              <Link to="/admin" className="text-primary-600 hover:text-primary-700 transition font-medium">
+                Admin
+              </Link>
+            )}
           </div>
 
           {/* Right Side Actions */}
           <div className="flex items-center space-x-4">
             <Link to="/cart" className="relative text-gray-700 hover:text-primary-600 transition">
               <ShoppingCart className="w-6 h-6" />
-              <span className="absolute -top-2 -right-2 bg-primary-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                0
-              </span>
+              {getCartCount() > 0 && (
+                <span className="absolute -top-2 -right-2 bg-primary-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {getCartCount()}
+                </span>
+              )}
             </Link>
 
             {isAuthenticated ? (

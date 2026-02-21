@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: red-shopping
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: api-gateway
+        image: red-shopping-api-gateway:latest
+        imagePullPolicy: Never  # Pour Minikube (images locales)
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: NODE_ENV
+        - name: PRODUCT_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: PRODUCT_SERVICE_URL
+        - name: USER_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: USER_SERVICE_URL
+        - name: ORDER_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: ORDER_SERVICE_URL
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: jwt-secret
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: REDIS_HOST
+        ports:
+        - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: red-shopping
+spec:
+  type: NodePort
+  selector:
+    app: api-gateway
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30800  # Port accessible depuis l'extérieur de Minikube

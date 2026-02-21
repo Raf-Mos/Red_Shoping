@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Filter } from 'lucide-react'
+import { Search, Filter, X } from 'lucide-react'
 import ProductCard from '../components/ProductCard'
 import apiClient from '../api/axios'
 
@@ -8,6 +8,9 @@ const Products = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [error, setError] = useState(null)
+  const [showFilters, setShowFilters] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 10000 })
 
   useEffect(() => {
     fetchProducts()
@@ -17,7 +20,7 @@ const Products = () => {
     try {
       setLoading(true)
       const response = await apiClient.get('/api/products')
-      setProducts(response.data)
+      setProducts(response.data.products || [])
       setError(null)
     } catch (err) {
       setError('Failed to load products. Please try again later.')
@@ -28,15 +31,33 @@ const Products = () => {
   }
 
   const handleAddToCart = (product) => {
-    // TODO: Implement add to cart functionality
+    // Handled by ProductCard now
     console.log('Adding to cart:', product)
-    alert(`Added ${product.name} to cart!`)
   }
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.description.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // Get unique categories
+  const categories = ['all', ...new Set(products.map(p => p.category))]
+
+  // Apply all filters
+  const filteredProducts = products.filter(product => {
+    // Search filter
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.description.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    // Category filter
+    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory
+    
+    // Price filter
+    const matchesPrice = product.price >= priceRange.min && product.price <= priceRange.max
+    
+    return matchesSearch && matchesCategory && matchesPrice
+  })
+
+  const clearFilters = () => {
+    setSelectedCategory('all')
+    setPriceRange({ min: 0, max: 10000 })
+    setSearchTerm('')
+  }
 
   return (
     <div>
@@ -56,11 +77,93 @@ const Products = () => {
             />
           </div>
           
-          <button className="btn-secondary flex items-center justify-center space-x-2">
+          <button 
+            onClick={() => setShowFilters(!showFilters)}
+            className="btn-secondary flex items-center justify-center space-x-2"
+          >
             <Filter className="w-4 h-4" />
             <span>Filters</span>
           </button>
         </div>
+
+        {/* Filter Panel */}
+        {showFilters && (
+          <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Filters</h3>
+              <button 
+                onClick={() => setShowFilters(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Category Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Category
+                </label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  {categories.map(category => (
+                    <option key={category} value={category}>
+                      {category.charAt(0).toUpperCase() + category.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Price Range Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Price Range: ${priceRange.min} - ${priceRange.max}
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="3000"
+                    step="100"
+                    value={priceRange.max}
+                    onChange={(e) => setPriceRange({ ...priceRange, max: parseInt(e.target.value) })}
+                    className="w-full"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={priceRange.min}
+                      onChange={(e) => setPriceRange({ ...priceRange, min: parseInt(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={priceRange.max}
+                      onChange={(e) => setPriceRange({ ...priceRange, max: parseInt(e.target.value) || 10000 })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Clear Filters Button */}
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={clearFilters}
+                className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Clear all filters
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Loading State */}
@@ -99,7 +202,6 @@ const Products = () => {
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onAddToCart={handleAddToCart}
                 />
               ))}
             </div>

@@ -1,8 +1,26 @@
 import { ShoppingCart } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useCart } from '../context/CartContext'
 
-const ProductCard = ({ product, onAddToCart }) => {
+const ProductCard = ({ product }) => {
+  const navigate = useNavigate()
+  const { addToCart } = useCart()
+
+  const handleAddToCart = (e) => {
+    e.stopPropagation()
+    addToCart(product, 1)
+    alert(`${product.name} added to cart!`)
+  }
+
+  const handleClick = () => {
+    navigate(`/products/${product.id}`)
+  }
+
   return (
-    <div className="card p-4">
+    <div 
+      className="card p-4 cursor-pointer hover:shadow-lg transition-shadow"
+      onClick={handleClick}
+    >
       <div className="aspect-square bg-gray-200 rounded-lg mb-4 overflow-hidden">
         <img
           src={product.image || 'https://via.placeholder.com/300'}
@@ -22,11 +40,11 @@ const ProductCard = ({ product, onAddToCart }) => {
         </span>
         
         <button
-          onClick={() => onAddToCart(product)}
+          onClick={handleAddToCart}
           className="btn-primary flex items-center space-x-2"
         >
           <ShoppingCart className="w-4 h-4" />
-          <span>Add to Cart</span>
+          <span>Add</span>
         </button>
       </div>
       

@@ -62,6 +62,8 @@ Red Shopping est une plateforme e-commerce moderne déployée sur AWS avec une a
 
 ### Environnement Local
 
+#### Option 1 : Docker Compose (Développement simple)
+
 ```bash
 # Cloner le repository
 git clone <your-repo-url>
@@ -75,5 +77,38 @@ docker-compose up -d
 
 # Accéder à l'application
 # Frontend: http://localhost:3000
-# API Gateway: http://localhost:8080
+# API Gateway: http://localhost:8000
 # Grafana: http://localhost:3001
+```
+
+#### Option 2 : Minikube (Kubernetes local)
+
+```powershell
+# 1. Démarrer Minikube
+.\scripts\start-minikube.ps1
+
+# 2. Déployer l'application
+.\scripts\deploy-minikube.ps1
+
+# 3. Accéder à l'application
+minikube service frontend-ui -n red-shopping
+minikube service api-gateway -n red-shopping
+```
+
+📖 **Documentation complète** : [Guide de déploiement Minikube](docs/MINIKUBE-DEPLOYMENT.md)
+
+### Comparaison des options de déploiement
+
+| Critère | Docker Compose | Minikube |
+|---------|---------------|----------|
+| **Facilité** | ⭐⭐⭐⭐⭐ Très simple | ⭐⭐⭐ Nécessite kubectl |
+| **Ressources** | ⭐⭐⭐⭐ 2-3 GB RAM | ⭐⭐ 4+ GB RAM |
+| **Production** | ❌ Dev uniquement | ✅ Similaire à la prod |
+| **Scalabilité** | ❌ Limitée | ✅ Horizontale |
+| **Réseau** | ⭐⭐⭐ Bridge simple | ⭐⭐⭐⭐⭐ Service mesh |
+| **Monitoring** | ⭐⭐⭐ Docker logs | ⭐⭐⭐⭐ Metrics-server |
+
+**Recommandation** : 
+- 🏠 **Dev local rapide** → Docker Compose
+- 🎯 **Test Kubernetes** → Minikube
+- ☁️ **Production** → AWS EKS (voir [infrastructure/](infrastructure/))

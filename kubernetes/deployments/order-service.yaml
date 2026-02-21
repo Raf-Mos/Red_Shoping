@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  namespace: red-shopping
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: order-service
+        image: red-shopping-order-service:latest
+        imagePullPolicy: Never  # Pour Minikube (images locales)
+        env:
+        - name: FLASK_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: FLASK_ENV
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: ORDERS_DB_URL
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: RABBITMQ_HOST
+        - name: PRODUCT_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: service-config
+              key: PRODUCT_SERVICE_URL
+        ports:
+        - containerPort: 8003
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: red-shopping
+spec:
+  type: ClusterIP
+  selector:
+    app: order-service
+  ports:
+  - port: 8003
+    targetPort: 8003
