@@ -81,3 +81,8 @@ monitoring/grafana/data/
 tmp/
 temp/
 *.tmp
+
+# GitLab CI/CD secrets
+gitlab-secrets-backup.txt
+kube-config-base64.txt
+*.backup.txt
