@@ -24,8 +24,8 @@ export const authLimiter = rateLimit({
     // @ts-expect-error - Known issue with TypeScript types
     sendCommand: (...args) => redisClient.sendCommand(args),
   }),
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 login attempts per windowMs
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 20, // Limit each IP to 20 login attempts per windowMs
   message: {
     success: false,
     message: 'Too many authentication attempts, please try again later.'

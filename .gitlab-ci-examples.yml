@@ -1,0 +1,373 @@
+# GitLab CI/CD Configuration Examples
+# Alternative configurations and advanced setups
+
+# ==========================================
+# Example 1: Separate Registry per Service
+# ==========================================
+# If you want to use different registries for different services
+
+variables:
+  REGISTRY_FRONTEND: registry.gitlab.com/$CI_PROJECT_PATH/frontend
+  REGISTRY_BACKEND: registry.gitlab.com/$CI_PROJECT_PATH/backend
+  REGISTRY_SERVICES: registry.gitlab.com/$CI_PROJECT_PATH/services
+
+build:frontend:
+  stage: build
+  script:
+    - docker build -t $REGISTRY_FRONTEND/frontend-ui:$CI_COMMIT_SHORT_SHA ./microservices/frontend-ui
+    - docker push $REGISTRY_FRONTEND/frontend-ui:$CI_COMMIT_SHORT_SHA
+
+# ==========================================
+# Example 2: Build Matrix for Multiple Environments
+# ==========================================
+# Build images for different environments
+
+.build_template:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  script:
+    - docker build -t $IMAGE_NAME:$ENV-$CI_COMMIT_SHORT_SHA -f $DOCKERFILE --build-arg ENV=$ENV $BUILD_CONTEXT
+    - docker push $IMAGE_NAME:$ENV-$CI_COMMIT_SHORT_SHA
+
+build:api-gateway:dev:
+  extends: .build_template
+  variables:
+    IMAGE_NAME: $REGISTRY/api-gateway
+    DOCKERFILE: ./microservices/api-gateway/Dockerfile
+    BUILD_CONTEXT: ./microservices/api-gateway
+    ENV: development
+
+build:api-gateway:prod:
+  extends: .build_template
+  variables:
+    IMAGE_NAME: $REGISTRY/api-gateway
+    DOCKERFILE: ./microservices/api-gateway/Dockerfile.prod
+    BUILD_CONTEXT: ./microservices/api-gateway
+    ENV: production
+  only:
+    - main
+
+# ==========================================
+# Example 3: Security Scanning
+# ==========================================
+# Add security scanning to your pipeline
+
+include:
+  - template: Security/Container-Scanning.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Security/SAST.gitlab-ci.yml
+
+container_scanning:
+  stage: test
+  variables:
+    CI_APPLICATION_REPOSITORY: $REGISTRY/api-gateway
+    CI_APPLICATION_TAG: $CI_COMMIT_SHORT_SHA
+
+dependency_scanning:
+  stage: test
+  only:
+    - main
+    - develop
+
+sast:
+  stage: test
+  only:
+    - main
+    - develop
+
+# ==========================================
+# Example 4: Performance Testing
+# ==========================================
+# Add performance/load testing
+
+performance:api-gateway:
+  stage: test
+  image: grafana/k6:latest
+  script:
+    - k6 run tests/performance/api-gateway.js
+  artifacts:
+    reports:
+      performance: performance.json
+  only:
+    - main
+
+# ==========================================
+# Example 5: Database Migrations
+# ==========================================
+# Run database migrations before deployment
+
+migrate:products-db:
+  stage: deploy
+  image: postgres:15-alpine
+  before_script:
+    - apk add --no-cache postgresql-client
+  script:
+    - psql $DATABASE_URL < microservices/product-service/migrations/latest.sql
+  environment:
+    name: staging
+  only:
+    - develop
+  when: manual
+
+# ==========================================
+# Example 6: Smoke Tests After Deployment
+# ==========================================
+# Verify deployment with smoke tests
+
+smoke-test:staging:
+  stage: deploy
+  image: curlimages/curl:latest
+  script:
+    - |
+      echo "Testing API Gateway..."
+      curl -f https://staging.redshopping.com/api/health || exit 1
+      
+      echo "Testing Frontend..."
+      curl -f https://staging.redshopping.com/ || exit 1
+      
+      echo "✅ Smoke tests passed!"
+  environment:
+    name: staging
+  only:
+    - develop
+  needs:
+    - deploy:staging
+
+# ==========================================
+# Example 7: Slack/Discord Notifications
+# ==========================================
+# Send notifications to Slack or Discord
+
+.notify_template:
+  image: curlimages/curl:latest
+  script:
+    - |
+      curl -X POST $WEBHOOK_URL \
+        -H 'Content-Type: application/json' \
+        -d '{
+          "text": "'"$MESSAGE"'",
+          "username": "GitLab CI/CD",
+          "icon_emoji": ":rocket:"
+        }'
+
+notify:success:
+  extends: .notify_template
+  stage: .post
+  variables:
+    MESSAGE: "✅ Pipeline $CI_PIPELINE_ID succeeded for $CI_PROJECT_NAME on $CI_COMMIT_REF_NAME"
+    WEBHOOK_URL: $SLACK_WEBHOOK_URL
+  when: on_success
+  only:
+    - main
+
+notify:failure:
+  extends: .notify_template
+  stage: .post
+  variables:
+    MESSAGE: "❌ Pipeline $CI_PIPELINE_ID failed for $CI_PROJECT_NAME on $CI_COMMIT_REF_NAME"
+    WEBHOOK_URL: $SLACK_WEBHOOK_URL
+  when: on_failure
+  only:
+    - main
+
+# ==========================================
+# Example 8: Multi-Cluster Deployment
+# ==========================================
+# Deploy to multiple Kubernetes clusters
+
+deploy:cluster-eu:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "$KUBE_CONFIG_EU" | base64 -d > ~/.kube/config
+  script:
+    - kubectl apply -f kubernetes/deployments/ -n $K8S_NAMESPACE
+  environment:
+    name: production-eu
+  only:
+    - main
+  when: manual
+
+deploy:cluster-us:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "$KUBE_CONFIG_US" | base64 -d > ~/.kube/config
+  script:
+    - kubectl apply -f kubernetes/deployments/ -n $K8S_NAMESPACE
+  environment:
+    name: production-us
+  only:
+    - main
+  when: manual
+
+# ==========================================
+# Example 9: Canary Deployment
+# ==========================================
+# Gradual rollout to production
+
+deploy:canary:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "$KUBE_CONFIG_PROD" | base64 -d > ~/.kube/config
+  script:
+    - kubectl set image deployment/api-gateway api-gateway=$REGISTRY/api-gateway:$CI_COMMIT_SHORT_SHA -n $K8S_NAMESPACE
+    - kubectl patch deployment api-gateway -p '{"spec":{"replicas":1}}' -n $K8S_NAMESPACE
+    - sleep 300  # Wait 5 minutes
+    - kubectl scale deployment api-gateway --replicas=3 -n $K8S_NAMESPACE
+  environment:
+    name: production-canary
+  only:
+    - main
+  when: manual
+
+# ==========================================
+# Example 10: Blue-Green Deployment
+# ==========================================
+# Zero-downtime deployment with blue-green strategy
+
+variables:
+  BLUE_NAMESPACE: red-shopping-blue
+  GREEN_NAMESPACE: red-shopping-green
+
+deploy:blue:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "$KUBE_CONFIG_PROD" | base64 -d > ~/.kube/config
+  script:
+    - kubectl create namespace $BLUE_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+    - kubectl apply -f kubernetes/deployments/ -n $BLUE_NAMESPACE
+    - kubectl set image deployment/api-gateway api-gateway=$REGISTRY/api-gateway:$CI_COMMIT_SHORT_SHA -n $BLUE_NAMESPACE
+  environment:
+    name: blue
+  only:
+    - main
+  when: manual
+
+switch:traffic:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "$KUBE_CONFIG_PROD" | base64 -d > ~/.kube/config
+  script:
+    - kubectl patch service api-gateway -p '{"spec":{"selector":{"version":"blue"}}}' -n red-shopping
+  environment:
+    name: production
+  only:
+    - main
+  when: manual
+  needs:
+    - deploy:blue
+
+# ==========================================
+# Example 11: Automated Testing with Cypress
+# ==========================================
+# E2E testing with Cypress
+
+e2e:test:
+  stage: test
+  image: cypress/included:12.0.0
+  script:
+    - cd microservices/frontend-ui
+    - npm ci
+    - npx cypress run --config baseUrl=https://staging.redshopping.com
+  artifacts:
+    when: always
+    paths:
+      - microservices/frontend-ui/cypress/videos/
+      - microservices/frontend-ui/cypress/screenshots/
+    expire_in: 7 days
+  only:
+    - develop
+
+# ==========================================
+# Example 12: Helm Deployment
+# ==========================================
+# Deploy using Helm charts instead of kubectl
+
+deploy:helm:staging:
+  stage: deploy
+  image: alpine/helm:latest
+  before_script:
+    - echo "$KUBE_CONFIG_STAGING" | base64 -d > ~/.kube/config
+  script:
+    - helm upgrade --install red-shopping ./helm/red-shopping \
+        --namespace $K8S_NAMESPACE \
+        --create-namespace \
+        --set image.tag=$CI_COMMIT_SHORT_SHA \
+        --set environment=staging \
+        --wait \
+        --timeout 10m
+  environment:
+    name: staging
+  only:
+    - develop
+  when: manual
+
+# ==========================================
+# Example 13: ArgoCD GitOps Deployment
+# ==========================================
+# Trigger ArgoCD sync for GitOps workflow
+
+deploy:argocd:
+  stage: deploy
+  image: argoproj/argocd:latest
+  before_script:
+    - argocd login $ARGOCD_SERVER --username $ARGOCD_USERNAME --password $ARGOCD_PASSWORD
+  script:
+    - argocd app sync red-shopping-staging
+    - argocd app wait red-shopping-staging --health
+  environment:
+    name: staging
+  only:
+    - develop
+  when: manual
+
+# ==========================================
+# Example 14: AWS EKS Deployment
+# ==========================================
+# Deploy to AWS EKS cluster
+
+deploy:eks:
+  stage: deploy
+  image: amazon/aws-cli:latest
+  before_script:
+    - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl
+    - mv kubectl /usr/local/bin/
+  script:
+    - kubectl apply -f kubernetes/deployments/ -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/api-gateway -n $K8S_NAMESPACE
+  environment:
+    name: production-aws
+  only:
+    - main
+  when: manual
+
+# ==========================================
+# Example 15: Cost Optimization - Cleanup Old Images
+# ==========================================
+# Remove old images from registry to save costs
+
+cleanup:registry:
+  stage: .post
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      # Keep only last 10 images
+      PROJECT_ID=$(curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects?search=$CI_PROJECT_NAME" | jq '.[0].id')
+      for repo in frontend-ui api-gateway product-service user-service order-service notification-service; do
+        echo "Cleaning up $repo..."
+        curl --request DELETE --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+          "$CI_API_V4_URL/projects/$PROJECT_ID/registry/repositories/$repo/tags?keep_n=10&name_regex=.*"
+      done
+  only:
+    - main
+  when: manual

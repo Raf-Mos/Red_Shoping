@@ -1,0 +1,352 @@
+# GitLab CI/CD Pipeline for Red Shopping
+# Microservices E-commerce Platform
+
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  # Docker Registry (change to your registry)
+  REGISTRY: registry.gitlab.com/$CI_PROJECT_PATH
+  # Kubernetes namespace
+  K8S_NAMESPACE: red-shopping
+
+# Templates
+.docker_build_template: &docker_build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build -t $IMAGE_NAME:$CI_COMMIT_SHORT_SHA -t $IMAGE_NAME:latest -f $DOCKERFILE_PATH $BUILD_CONTEXT
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - docker push $IMAGE_NAME:latest
+
+# ==========================================
+# BUILD STAGE
+# ==========================================
+
+build:frontend:
+  stage: build
+  <<: *docker_build
+  variables:
+    IMAGE_NAME: $REGISTRY/frontend-ui
+    DOCKERFILE_PATH: ./microservices/frontend-ui/Dockerfile
+    BUILD_CONTEXT: ./microservices/frontend-ui
+  only:
+    changes:
+      - microservices/frontend-ui/**/*
+      - .gitlab-ci.yml
+    refs:
+      - main
+      - develop
+
+build:api-gateway:
+  stage: build
+  <<: *docker_build
+  variables:
+    IMAGE_NAME: $REGISTRY/api-gateway
+    DOCKERFILE_PATH: ./microservices/api-gateway/Dockerfile
+    BUILD_CONTEXT: ./microservices/api-gateway
+  only:
+    changes:
+      - microservices/api-gateway/**/*
+      - .gitlab-ci.yml
+    refs:
+      - main
+      - develop
+
+build:product-service:
+  stage: build
+  <<: *docker_build
+  variables:
+    IMAGE_NAME: $REGISTRY/product-service
+    DOCKERFILE_PATH: ./microservices/product-service/Dockerfile
+    BUILD_CONTEXT: ./microservices/product-service
+  only:
+    changes:
+      - microservices/product-service/**/*
+      - .gitlab-ci.yml
+    refs:
+      - main
+      - develop
+
+build:user-service:
+  stage: build
+  <<: *docker_build
+  variables:
+    IMAGE_NAME: $REGISTRY/user-service
+    DOCKERFILE_PATH: ./microservices/user-service/Dockerfile
+    BUILD_CONTEXT: ./microservices/user-service
+  only:
+    changes:
+      - microservices/user-service/**/*
+      - .gitlab-ci.yml
+    refs:
+      - main
+      - develop
+
+build:order-service:
+  stage: build
+  <<: *docker_build
+  variables:
+    IMAGE_NAME: $REGISTRY/order-service
+    DOCKERFILE_PATH: ./microservices/order-service/Dockerfile
+    BUILD_CONTEXT: ./microservices/order-service
+  only:
+    changes:
+      - microservices/order-service/**/*
+      - .gitlab-ci.yml
+    refs:
+      - main
+      - develop
+
+build:notification-service:
+  stage: build
+  <<: *docker_build
+  variables:
+    IMAGE_NAME: $REGISTRY/notification-service
+    DOCKERFILE_PATH: ./microservices/notification-service/Dockerfile
+    BUILD_CONTEXT: ./microservices/notification-service
+  only:
+    changes:
+      - microservices/notification-service/**/*
+      - .gitlab-ci.yml
+    refs:
+      - main
+      - develop
+
+# ==========================================
+# TEST STAGE
+# ==========================================
+
+test:frontend:
+  stage: test
+  image: node:20-alpine
+  cache:
+    paths:
+      - microservices/frontend-ui/node_modules/
+  before_script:
+    - cd microservices/frontend-ui
+    - npm ci
+  script:
+    - npm run lint
+    # - npm run test  # Uncomment when tests exist
+  only:
+    changes:
+      - microservices/frontend-ui/**/*
+      - .gitlab-ci.yml
+
+test:api-gateway:
+  stage: test
+  image: node:20-alpine
+  cache:
+    paths:
+      - microservices/api-gateway/node_modules/
+  before_script:
+    - cd microservices/api-gateway
+    - npm ci
+  script:
+    - echo "Running API Gateway tests..."
+    # - npm run test  # Uncomment when tests exist
+  only:
+    changes:
+      - microservices/api-gateway/**/*
+      - .gitlab-ci.yml
+
+test:user-service:
+  stage: test
+  image: node:20-alpine
+  services:
+    - mongo:7
+  variables:
+    MONGODB_URI: mongodb://mongo:27017/users_test_db
+  cache:
+    paths:
+      - microservices/user-service/node_modules/
+  before_script:
+    - cd microservices/user-service
+    - npm ci
+  script:
+    - echo "Running User Service tests..."
+    # - npm run test  # Uncomment when tests exist
+  only:
+    changes:
+      - microservices/user-service/**/*
+      - .gitlab-ci.yml
+
+test:product-service:
+  stage: test
+  image: python:3.11-slim
+  services:
+    - postgres:15-alpine
+  variables:
+    DATABASE_URL: postgresql://postgres:postgres@postgres:5432/products_test_db
+    POSTGRES_DB: products_test_db
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+  cache:
+    paths:
+      - .cache/pip
+  before_script:
+    - cd microservices/product-service
+    - pip install --cache-dir .cache/pip -r requirements.txt
+  script:
+    - echo "Running Product Service tests..."
+    # - pytest  # Uncomment when tests exist
+  only:
+    changes:
+      - microservices/product-service/**/*
+      - .gitlab-ci.yml
+
+test:order-service:
+  stage: test
+  image: python:3.11-slim
+  services:
+    - postgres:15-alpine
+    - rabbitmq:3-alpine
+  variables:
+    DATABASE_URL: postgresql://postgres:postgres@postgres:5432/orders_test_db
+    POSTGRES_DB: orders_test_db
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    RABBITMQ_HOST: rabbitmq
+  cache:
+    paths:
+      - .cache/pip
+  before_script:
+    - cd microservices/order-service
+    - pip install --cache-dir .cache/pip -r requirements.txt
+  script:
+    - echo "Running Order Service tests..."
+    # - pytest  # Uncomment when tests exist
+  only:
+    changes:
+      - microservices/order-service/**/*
+      - .gitlab-ci.yml
+
+test:notification-service:
+  stage: test
+  image: python:3.11-slim
+  services:
+    - rabbitmq:3-alpine
+  variables:
+    RABBITMQ_HOST: rabbitmq
+  cache:
+    paths:
+      - .cache/pip
+  before_script:
+    - cd microservices/notification-service
+    - pip install --cache-dir .cache/pip -r requirements.txt
+  script:
+    - echo "Running Notification Service tests..."
+    # - pytest  # Uncomment when tests exist
+  only:
+    changes:
+      - microservices/notification-service/**/*
+      - .gitlab-ci.yml
+
+# ==========================================
+# DEPLOY STAGE
+# ==========================================
+
+# Deploy to Staging (Kubernetes)
+deploy:staging:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$KUBE_CONFIG_STAGING" | base64 -d > ~/.kube/config
+    - kubectl version --client
+  script:
+    # Update image tags in deployments
+    - |
+      for service in api-gateway frontend-ui product-service user-service order-service notification-service; do
+        kubectl set image deployment/$service $service=$REGISTRY/$service:$CI_COMMIT_SHORT_SHA -n $K8S_NAMESPACE || true
+      done
+    # Apply any configuration changes
+    - kubectl apply -f kubernetes/configmaps/ -n $K8S_NAMESPACE
+    - kubectl apply -f kubernetes/secrets/ -n $K8S_NAMESPACE
+    - kubectl apply -f kubernetes/deployments/ -n $K8S_NAMESPACE
+    # Wait for rollout
+    - kubectl rollout status deployment/api-gateway -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/frontend-ui -n $K8S_NAMESPACE
+  environment:
+    name: staging
+    url: https://staging.redshopping.com
+  only:
+    - develop
+  when: manual
+
+# Deploy to Production (Kubernetes)
+deploy:production:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$KUBE_CONFIG_PROD" | base64 -d > ~/.kube/config
+    - kubectl version --client
+  script:
+    # Update image tags in deployments
+    - |
+      for service in api-gateway frontend-ui product-service user-service order-service notification-service; do
+        kubectl set image deployment/$service $service=$REGISTRY/$service:$CI_COMMIT_SHORT_SHA -n $K8S_NAMESPACE
+      done
+    # Apply any configuration changes
+    - kubectl apply -f kubernetes/configmaps/ -n $K8S_NAMESPACE
+    - kubectl apply -f kubernetes/secrets/ -n $K8S_NAMESPACE
+    - kubectl apply -f kubernetes/deployments/ -n $K8S_NAMESPACE
+    # Wait for rollout
+    - kubectl rollout status deployment/api-gateway -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/frontend-ui -n $K8S_NAMESPACE
+  environment:
+    name: production
+    url: https://redshopping.com
+  only:
+    - main
+  when: manual
+
+# Deploy using Docker Compose (for development/testing)
+deploy:docker-compose:
+  stage: deploy
+  image: docker/compose:latest
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+  before_script:
+    - docker version
+    - docker-compose version
+  script:
+    - docker-compose down
+    - docker-compose up -d --build
+    - docker-compose ps
+  environment:
+    name: docker-compose
+  only:
+    - develop
+  when: manual
+
+# Rollback Production
+rollback:production:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$KUBE_CONFIG_PROD" | base64 -d > ~/.kube/config
+  script:
+    - kubectl rollout undo deployment/api-gateway -n $K8S_NAMESPACE
+    - kubectl rollout undo deployment/frontend-ui -n $K8S_NAMESPACE
+    - kubectl rollout undo deployment/product-service -n $K8S_NAMESPACE
+    - kubectl rollout undo deployment/user-service -n $K8S_NAMESPACE
+    - kubectl rollout undo deployment/order-service -n $K8S_NAMESPACE
+    - kubectl rollout undo deployment/notification-service -n $K8S_NAMESPACE
+  environment:
+    name: production
+  only:
+    - main
+  when: manual
